@@ -1,0 +1,13 @@
+{
+  "name": "Solvitesse",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/samuveth/Solvitesse.git",
+  "author": "Sam <samuv.eth@gmail.com>",
+  "license": "MIT",
+  "private": false,
+  "dependencies": {
+    "discord.js": "^14.8.0",
+    "openai": "^3.2.1"
+  }
+}
