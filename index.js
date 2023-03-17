@@ -1,9 +1,15 @@
 const Discord = require("discord.js");
 const { Client, GatewayIntentBits } = require("discord.js");
 const { Configuration, OpenAIApi } = require("openai");
+const MiniSearch = require("minisearch");
+const faq = require("./snapshot-faq.json");
+const fs = require("fs");
+const dotenv = require("dotenv");
+
+dotenv.config({ path: `.env.local`, override: true });
 
 const configuration = new Configuration({
-  apiKey: "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",
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 const openai = new OpenAIApi(configuration);
@@ -16,6 +22,15 @@ const client = new Client({
   ],
 });
 
+let miniSearch = new MiniSearch({
+  fields: ["question"],
+  storeFields: ["question", "answer"],
+  searchOptions: {
+    fuzzy: 0.1,
+  },
+});
+miniSearch.addAll(faq.data);
+
 client.on("ready", () => {
   console.log(`Logged in as ${client.user.tag}!`);
 });
@@ -24,80 +39,61 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   const userInput = message.content;
-  console.log("🚀 ~ file: index.js:19 ~ client.on ~ userInput:", userInput);
+  console.log("userInput:", userInput);
 
-  const chatResponseSearchText = await openai.createChatCompletion({
-    model: "gpt-3.5-turbo",
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are analyzing text of support requests for the user. You always give the shortest answer possible. You don't say things like 'yes sure' or 'no problem' cut straight to the point.",
-      },
-      {
-        role: "user",
-        content:
-          "From the following text pull out 2-5 key parts that are the most important to what the user is looking to get an answer for, each part can be 1-3 words long, separate each part by a comma:" +
-          userInput,
-      },
-    ],
-  });
+  let bestMatchingFaq = miniSearch
+    .search(userInput)
+    .slice(0, 6)
+    .map((x) => {
+      return `Q: ${x.question} \n A: ${x.answer}`;
+    });
 
-  const searchText =
-    chatResponseSearchText.data.choices[0].message.content || "";
-  console.log("🚀 ~ file: index.js:39 ~ client.on ~ searchText:", searchText);
+  try {
+    const chatResponseUserAnswer = await openai.createChatCompletion({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: `You are a helpful FAQ bot. You can only do 2 things, answer questions you find in the FAQ or answer 'I don't know that'. Under no circumstances should you response with your own made up answers. Here are Snapshot FAQ: ${bestMatchingFaq}`,
+        },
+        {
+          role: "user",
+          content: `The users questions is: ${userInput}`,
+        },
+      ],
+    });
 
-  const searchTextArray = searchText.split(",");
+    const responseMessage =
+      chatResponseUserAnswer.data.choices[0].message.content;
 
-  let lastMessage = null;
+    if (responseMessage.includes("I don't know that")) {
+      const fileArray = JSON.parse(
+        fs.readFileSync("snapshot-faq-unknown.json")
+      );
 
-  while (true) {
-    const options = { limit: 10 };
-    if (lastMessage) {
-      options.before = lastMessage.id;
+      if (!fileArray.map((el) => el.content).includes(userInput)) {
+        fileArray.push({ count: 0, content: userInput });
+      } else {
+        const index = fileArray.map((el) => el.content).indexOf(userInput);
+        fileArray[index].count += 1;
+      }
+
+      const uniqueFileArray = [...new Set(fileArray)];
+
+      fs.writeFileSync(
+        "snapshot-faq-unknown.json",
+        JSON.stringify(uniqueFileArray, null, 2),
+        function (err) {
+          if (err) throw err;
+          console.log("Saved!");
+        }
+      );
     }
 
-    const messages = await message.channel.messages.fetch(options);
-    lastMessage = messages.last();
-
-    // Add matched messages to the search results
-    const matchedMessages = messages
-      .filter((m) =>
-        searchTextArray.some((searchText) => m.content.includes(searchText))
-      )
-      .map((m) => m.content);
-    console.log(
-      "🚀 ~ file: index.js:47 ~ client.on ~ matchedMessages:",
-      matchedMessages
-    );
-
-    let searchResults = [];
-    searchResults = searchResults.concat(matchedMessages);
-    searchResults = [...new Set(searchResults)];
-
-    if (searchResults.length > 0) {
-      // No more messages available, search complete
-      break;
-    }
+    message.reply(responseMessage);
+  } catch (error) {
+    console.log(error);
   }
-
-  //   const chatResponseUserAnswer = await openai.createChatCompletion({
-  //     model: "gpt-3.5-turbo",
-  //     messages: [
-  //       { role: "system", content: "You are a helpful assistant." },
-  //       { role: "user", content: userInput },
-  //     ],
-  //   });
-
-  //   const responseMessage =
-  //     chatResponseUserAnswer.data.choices[0].message.content;
-  //   console.log(
-  //     "🚀 ~ file: index.js:38 ~ client.on ~ responseMessage:",
-  //     responseMessage
-  //   );
-  //   message.reply(responseMessage || "nothing");
 });
 
-client.login(
-  "MTA4NTg4NjEwODA5ODg4NzY4Mg.GptCCa.KtgqspulFZgGLlKO_Mvy9XYV3sC6WO0lm3tFbw"
-);
+client.login(process.env.DISCORD_BOT_KEY);
