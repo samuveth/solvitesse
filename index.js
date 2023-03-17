@@ -54,11 +54,11 @@ client.on("messageCreate", async (message) => {
       messages: [
         {
           role: "system",
-          content: `You are a helpful FAQ bot. You can only do 2 things, answer questions you find in the FAQ or answer 'I don't know that'. Under no circumstances should you response with your own made up answers. Here are Snapshot FAQ: ${bestMatchingFaq}`,
+          content: `You are a helpful FAQ bot for the Snapshot (decentralized governance) support channel. You should only reply to questions (not statements) and can only respond in two ways, 1. answer questions you find in the FAQ or 2. answer 'I don't know that'. Under no circumstances should you response with your own made up answers. Here are Snapshot FAQ: ${bestMatchingFaq}`,
         },
         {
           role: "user",
-          content: `The users questions is: ${userInput}`,
+          content: `${userInput}`,
         },
       ],
     });
